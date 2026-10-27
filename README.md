@@ -131,6 +131,12 @@ User-Systemd-Units ausführen. Fehler stoppen den Lauf; sie lösen keine
 automatischen Buildwiederholungen oder Policyänderungen aus. Hostzeit, Status,
 TRX und Ergebnis-JSON liegen in einem neuen `work/client-*`-Verzeichnis.
 
+Nach einer unterbrochenen WinRM-Warteverbindung kann `--resume-installed` die
+abgeschlossene Werkzeuginstallation prüfen und den Quelltestlauf fortsetzen.
+Installationsnachweis, Installerhash, Microsoft-Signatur, MSBuild und .NET-10-SDK
+werden dabei erneut geprüft. Die gehashten Testskripte starten mit einer nur
+für ihren PowerShell-Prozess gesetzten Ausführungsrichtlinie.
+
 ## Nachweise
 
 Vor Anwendungskontrolltests den Gast sauber herunterfahren und den zugehörigen

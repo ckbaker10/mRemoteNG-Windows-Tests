@@ -20,8 +20,14 @@ def run_ps_with_input(session, script, payload):
     """Send data through encrypted stdin; never place it in script/command arguments."""
     if len(payload) > 65536:
         raise ValueError('Input exceeds the bounded lab message size')
-    prefix = "$ProgressPreference='SilentlyContinue';[Console]::InputEncoding=[Text.Encoding]::UTF8;"
-    encoded = base64.b64encode((prefix + script).encode('utf-16-le')).decode('ascii')
+    loader = ("$ProgressPreference='SilentlyContinue';[Console]::InputEncoding=[Text.Encoding]::UTF8;"
+              "$e=[Console]::In.ReadToEnd()|ConvertFrom-Json;"
+              "[Console]::SetIn([IO.StringReader]::new([Text.Encoding]::UTF8.GetString("
+              "[Convert]::FromBase64String($e.input))));&([ScriptBlock]::Create($e.script))")
+    encoded = base64.b64encode(loader.encode('utf-16-le')).decode('ascii')
+    envelope = json.dumps({'script': script, 'input': base64.b64encode(payload).decode('ascii')}).encode('ascii')
+    if len(envelope) > 65536:
+        raise ValueError('Script and input exceed the bounded lab message size')
     protocol = session.protocol
     shell = protocol.open_shell(noprofile=True, codepage=65001)
     command = None
@@ -29,7 +35,7 @@ def run_ps_with_input(session, script, payload):
         command = protocol.run_command(shell, 'powershell.exe',
             ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded],
             console_mode_stdin=False, skip_cmd_shell=True)
-        protocol.send_command_input(shell, command, payload, end=True)
+        protocol.send_command_input(shell, command, envelope, end=True)
         return winrm.Response(protocol.get_command_output(shell, command))
     finally:
         try:

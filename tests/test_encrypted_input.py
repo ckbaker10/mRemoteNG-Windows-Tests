@@ -1,4 +1,5 @@
 import base64
+import json
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -24,7 +25,12 @@ class EncryptedInputTests(unittest.TestCase):
         arguments = self.protocol.run_command.call_args.args[2]
         decoded = base64.b64decode(arguments[-1]).decode('utf-16-le')
         self.assertNotIn('stdin-only-value', decoded)
-        self.protocol.send_command_input.assert_called_once_with('shell', 'command', payload, end=True)
+        sent = self.protocol.send_command_input.call_args
+        self.assertEqual(sent.args[:2], ('shell', 'command'))
+        envelope = json.loads(sent.args[2])
+        self.assertEqual(base64.b64decode(envelope['input']), payload)
+        self.assertNotIn('stdin-only-value', envelope['script'])
+        self.assertTrue(sent.kwargs['end'])
         self.protocol.cleanup_command.assert_called_once_with('shell', 'command')
         self.protocol.close_shell.assert_called_once_with('shell')
 

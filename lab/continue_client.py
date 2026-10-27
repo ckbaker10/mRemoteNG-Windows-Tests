@@ -22,6 +22,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=Path)
     parser.add_argument('--timeout-minutes', type=int, default=180)
+    parser.add_argument('--resume-installed', action='store_true')
     args = parser.parse_args()
     config = json.loads(args.config.read_text())
     config.setdefault('harness_archive', 'windows-tests.zip')
@@ -70,7 +71,10 @@ def main():
         record['status'] = 'running'
         run('cleanup', (REPO / 'scripts' / 'Clear-LabSetupSecrets.ps1').read_text())
         subprocess.run([sys.executable, str(REPO / 'lab' / 'manage.py'), 'seal', 'client'], check=True)
-        run('build-tools', (REPO / 'scripts' / 'Initialize-BuildClient.ps1').read_text())
+        if args.resume_installed:
+            run('verify-installed', (REPO / 'scripts' / 'Test-BuildClient.ps1').read_text())
+        else:
+            run('build-tools', (REPO / 'scripts' / 'Initialize-BuildClient.ps1').read_text())
         # Only a dedicated loopback transfer service is used, containing public source archives.
         script = f"""$ErrorActionPreference = 'Stop'
 $root = 'C:\\mrng-lab\\transfer'
@@ -83,7 +87,8 @@ if ((Get-FileHash $source -Algorithm SHA256).Hash -ne '{config['source_sha256']}
 if ((Get-FileHash $harness -Algorithm SHA256).Hash -ne '{config['harness_sha256']}') {{ throw 'Harness hash mismatch' }}
 $destination = Join-Path $root '{config['harness_commit']}-{output.name}'
 Expand-Archive -LiteralPath $harness -DestinationPath $destination
-& (Join-Path $destination 'scripts\\Invoke-SourceTests.ps1') -SourceArchive $source -ArchiveSha256 '{config['source_sha256']}' -SourceCommit '{config['source_commit']}'
+& "$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $destination 'scripts\\Invoke-SourceTests.ps1') -SourceArchive $source -ArchiveSha256 '{config['source_sha256']}' -SourceCommit '{config['source_commit']}'
+if ($LASTEXITCODE) {{ throw 'The pinned source-test process failed.' }}
 """
         result = run('source-tests', script)
         paths = re.findall(r'Run artifacts: (C:\\mrng-lab\\runs\\[0-9a-f]{12}-[0-9a-f]{32})', result.std_out.decode('utf-8'))
