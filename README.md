@@ -59,14 +59,15 @@ Nach abgeschlossener Installation:
 ```bash
 .venv/bin/python lab/remote.py client scripts/Get-LabStatus.ps1
 .venv/bin/python lab/remote.py client scripts/Clear-LabSetupSecrets.ps1
-.venv/bin/python lab/manage.py eject-seed client
-.venv/bin/python lab/manage.py eject-install client
+.venv/bin/python lab/manage.py seal client
 .venv/bin/python lab/remote.py client scripts/Initialize-BuildClient.ps1
 ```
 
 Für den Server Status und Setupbereinigung ebenfalls ausführen. WinRM benutzt
 NTLM mit erzwungener Nachrichtenverschlüsselung; unverschlüsselte Nachrichten
 werden im Gast abgelehnt. Die Laboradministration ist kein Produktionsprofil.
+`seal` hängt beide Setupmedien aus und verhindert ihre erneute Einbindung beim
+nächsten Start. Erst nach erfolgreicher Installation und Gastbereinigung verwenden.
 
 `Initialize-BuildClient.ps1` prüft die Microsoft-Authenticode-Signatur des
 Installers und installiert Visual Studio 2026 Build Tools mit Desktop-Workload
@@ -84,6 +85,16 @@ Der Standardfilter deckt Sicherheit, Settings und Credential-Serializer ab.
 WinForms-Dialogtests benötigen eine interaktive Windows-Sitzung. Registrytests
 verwenden eigene HKCU-Testschlüssel; reale HKLM-/GPO-Abnahme wird gesondert im
 Labor ausgeführt. Kein produktives GPO oder App-Control-Profil wird angewendet.
+
+`probes/PolicyProbe` referenziert die tatsächliche mRemoteNG-Assembly. Mit
+Windows-MSBuild und `-p:MRemoteNGSource=<extrahierter Quellpfad>` bauen.
+`Invoke-MachinePolicyMatrix.ps1` startet für jede Policybelegung einen neuen
+Probeprozess, damit der Prozesscache keine Registryänderungen verdeckt. Es prüft
+HKCU-Isolation, maschinenweite Passwortvorgaben, Settings-Verschlüsselung und
+Ablehnung falscher Registrytypen/Werte. Das Skript verweigert vorhandene Policies,
+läuft nur auf `MRNG-CLIENT` mit Labormarker und entfernt ausschließlich seine
+eigenen Testschlüssel. Diese direkte Registryprüfung ergänzt einen späteren
+Domänen-GPO-Test; sie ersetzt ihn nicht.
 
 ## Nachweise
 

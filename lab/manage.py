@@ -33,6 +33,10 @@ def prepare(name):
     ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
     target = ROOT / name
     target.mkdir(mode=0o700, exist_ok=True)
+    if (target / 'installed.marker').exists():
+        if not all((target / item).exists() for item in ('disk.qcow2', 'OVMF_VARS.fd', 'credentials.json')):
+            raise RuntimeError('Installed machine state is incomplete; refusing to reprovision it')
+        return target
     credentials = target / 'credentials.json'
     if not credentials.exists():
         with open(credentials, 'x', opener=lambda path, flags: os.open(path, flags, 0o600)) as stream:
@@ -155,9 +159,11 @@ def start(name):
             '-drive','if=pflash,format=raw,unit=1,file='+str(target/'OVMF_VARS.fd'),
             '-global','driver=cfi.pflash01,property=secure,value=on',
             '-drive','file='+str(target/'disk.qcow2')+',format=qcow2,if=ide',
-            '-drive','file='+str(image)+',media=cdrom,readonly=on',
-            '-drive','file='+str(target/'seed.iso')+',media=cdrom,readonly=on',
-            '-boot','once=d,menu=on','-chardev','socket,id=chrtpm,path='+str(target/'tpm.sock'),
+            *([] if (target/'installed.marker').exists() else [
+                '-drive','file='+str(image)+',media=cdrom,readonly=on',
+                '-drive','file='+str(target/'seed.iso')+',media=cdrom,readonly=on',
+                '-boot','once=d,menu=on']),
+            '-chardev','socket,id=chrtpm,path='+str(target/'tpm.sock'),
             '-tpmdev','emulator,id=tpm0,chardev=chrtpm','-device','tpm-tis,tpmdev=tpm0',
             '-netdev','user,id=nat,hostfwd=tcp:127.0.0.1:'+str(port)+'-:5985',
             '-device','e1000e,netdev=nat,mac=52:54:00:aa:'+('10' if name=='server' else '20')+':01',
@@ -244,7 +250,7 @@ def vnc_input(name, key=None, text=None, x=None, y=None):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('action',choices=['prepare','start','boot','pause','resume','key','vnc-key','vnc-type','vnc-click','legacy-input','tablet','click','blocks','eject-install','eject-seed','screen','status','powerdown'])
+    parser.add_argument('action',choices=['prepare','start','boot','pause','resume','key','vnc-key','vnc-type','vnc-click','legacy-input','tablet','click','blocks','eject-install','eject-seed','seal','screen','status','powerdown'])
     parser.add_argument('machine',choices=['client','server'])
     parser.add_argument('--key',default='spc')
     parser.add_argument('--text',default='')
@@ -283,12 +289,15 @@ if __name__ == '__main__':
     elif args.action == 'blocks':
         blocks = qmp(args.machine,'query-block',{})['return']
         print([(item['device'],item.get('inserted',{}).get('file')) for item in blocks])
-    elif args.action in ('eject-install', 'eject-seed'):
+    elif args.action in ('eject-install', 'eject-seed', 'seal'):
         blocks = qmp(args.machine,'query-block',{})['return']
         for item in blocks:
             if item.get('inserted',{}).get('file','').endswith(
-                    ('seed.iso',) if args.action == 'eject-seed' else ('server2025.iso','windows11.iso')):
+                    ('seed.iso', 'server2025.iso', 'windows11.iso') if args.action == 'seal'
+                    else ('seed.iso',) if args.action == 'eject-seed' else ('server2025.iso','windows11.iso')):
                 qmp(args.machine,'eject',{'device':item['device'],'force':True})
+        if args.action == 'seal':
+            (ROOT/args.machine/'installed.marker').touch(mode=0o600)
     elif args.action == 'click':
         qmp(args.machine,'input-send-event',{'events':[
             {'type':'abs','data':{'axis':'x','value':int(args.x*32767/1280)}},

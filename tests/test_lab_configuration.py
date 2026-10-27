@@ -64,6 +64,17 @@ class LabConfigurationTests(unittest.TestCase):
                     addresses.add(address)
         self.assertEqual(len(addresses), 4)
 
+    def test_installed_machine_does_not_reattach_setup_secrets_on_restart(self):
+        target = lab.prepare('client')
+        for name in ('installed.marker', 'disk.qcow2', 'OVMF_VARS.fd'):
+            (target / name).touch()
+        self.run.reset_mock()
+        lab.start('client')
+        commands = [c.args[0] for c in self.run.call_args_list]
+        self.assertFalse(any(command[0] == 'xorriso' for command in commands))
+        qemu = next(command for command in commands if command[0] == 'qemu-system-x86_64')
+        self.assertFalse(any('media=cdrom' in argument for argument in qemu))
+
 
 if __name__ == '__main__':
     unittest.main()
