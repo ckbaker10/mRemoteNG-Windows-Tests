@@ -24,14 +24,16 @@ def main():
     parser.add_argument('--timeout-minutes', type=int, default=180)
     args = parser.parse_args()
     config = json.loads(args.config.read_text())
+    config.setdefault('harness_archive', 'windows-tests.zip')
     for name in ('source_commit', 'harness_commit'):
         if not re.fullmatch('[0-9a-f]{40}', config[name]):
             raise ValueError('Invalid commit provenance')
     for name in ('source_sha256', 'harness_sha256'):
         if not re.fullmatch('[0-9a-f]{64}', config[name]):
             raise ValueError('Invalid archive hash')
-    if not re.fullmatch(r'[A-Za-z0-9._-]+\.zip', config['source_archive']):
-        raise ValueError('Invalid source archive filename')
+    for name in ('source_archive', 'harness_archive'):
+        if not re.fullmatch(r'[A-Za-z0-9._-]+\.zip', config[name]):
+            raise ValueError('Invalid archive filename')
     output = REPO / 'work' / ('client-' + config['source_commit'][:12] + '-' + uuid.uuid4().hex[:8])
     output.mkdir(parents=True, exist_ok=False)
     started = int(time.time())
@@ -76,7 +78,7 @@ New-Item -ItemType Directory $root -Force | Out-Null
 $source = Join-Path $root '{config['source_archive']}'
 $harness = Join-Path $root 'windows-tests.zip'
 Invoke-WebRequest 'http://10.0.2.2:55987/{config['source_archive']}' -OutFile $source
-Invoke-WebRequest 'http://10.0.2.2:55987/windows-tests.zip' -OutFile $harness
+Invoke-WebRequest 'http://10.0.2.2:55987/{config['harness_archive']}' -OutFile $harness
 if ((Get-FileHash $source -Algorithm SHA256).Hash -ne '{config['source_sha256']}') {{ throw 'Source hash mismatch' }}
 if ((Get-FileHash $harness -Algorithm SHA256).Hash -ne '{config['harness_sha256']}') {{ throw 'Harness hash mismatch' }}
 $destination = Join-Path $root '{config['harness_commit']}-{output.name}'

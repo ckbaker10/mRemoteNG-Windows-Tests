@@ -107,6 +107,8 @@ Clientinstallation bis Werkzeuginstallation und Quelltests fortsetzen. Es wartet
 begrenzt auf WinRM, bereinigt Setupzugangsdaten, hängt Medien aus und prüft beide
 übertragenen Archivhashes. Die Konfiguration enthält `source_commit`,
 `source_archive`, `source_sha256`, `harness_commit` und `harness_sha256`.
+Optional legt `harness_archive` einen unveränderlichen Dateinamen des
+Testarchivs fest; ohne Angabe wird `windows-tests.zip` verwendet.
 Der separate HTTP-Transferdienst darf ausschließlich öffentliche Quellarchive
 an Loopback-Port 55987 anbieten. Controller und Transferdienst als eigene
 User-Systemd-Units ausführen. Fehler stoppen den Lauf; sie lösen keine
