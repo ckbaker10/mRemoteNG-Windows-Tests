@@ -44,13 +44,13 @@ def main():
     def save():
         (output / 'controller.json').write_text(json.dumps(record, indent=2) + '\n')
 
-    def run(name, script):
+    def run(name, script, check=True):
         record['phase'] = name
         save()
         result = create_session('client').run_ps(script)
         (output / (name + '.stdout')).write_bytes(result.std_out)
         (output / (name + '.stderr')).write_bytes(result.std_err)
-        if result.status_code:
+        if check and result.status_code:
             raise RuntimeError('Guest phase failed: ' + name)
         return result
 
@@ -77,6 +77,7 @@ def main():
             run('build-tools', (REPO / 'scripts' / 'Initialize-BuildClient.ps1').read_text())
         # Only a dedicated loopback transfer service is used, containing public source archives.
         script = f"""$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $root = 'C:\\mrng-lab\\transfer'
 New-Item -ItemType Directory $root -Force | Out-Null
 $source = Join-Path $root '{config['source_archive']}'
@@ -90,13 +91,17 @@ Expand-Archive -LiteralPath $harness -DestinationPath $destination
 & "$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $destination 'scripts\\Invoke-SourceTests.ps1') -SourceArchive $source -ArchiveSha256 '{config['source_sha256']}' -SourceCommit '{config['source_commit']}'
 if ($LASTEXITCODE) {{ throw 'The pinned source-test process failed.' }}
 """
-        result = run('source-tests', script)
+        result = run('source-tests', script, check=False)
         paths = re.findall(r'Run artifacts: (C:\\mrng-lab\\runs\\[0-9a-f]{12}-[0-9a-f]{32})', result.std_out.decode('utf-8'))
         if len(paths) != 1:
             raise ValueError('Cannot identify the guest test artifact directory')
-        for name in ('tests.trx', 'result.json'):
-            fetched = run('fetch-' + name, f"[Convert]::ToBase64String([IO.File]::ReadAllBytes('{paths[0]}\\{name}'))")
-            (output / name).write_bytes(base64.b64decode(fetched.std_out.strip(), validate=True))
+        for name in ('build.log', 'test.log', 'tests.trx', 'result.json'):
+            fetched = run('fetch-' + name, f"if (Test-Path -LiteralPath '{paths[0]}\\{name}') {{ [Convert]::ToBase64String([IO.File]::ReadAllBytes('{paths[0]}\\{name}')) }}")
+            if fetched.std_out.strip():
+                (output / name).write_bytes(base64.b64decode(fetched.std_out.strip(), validate=True))
+        if result.status_code:
+            record['phase'] = 'source-tests'
+            raise RuntimeError('Guest phase failed: source-tests; diagnostic artifacts retained')
         record['status'] = 'passed-source-tests'
     except Exception as error:
         record['status'] = 'failed'

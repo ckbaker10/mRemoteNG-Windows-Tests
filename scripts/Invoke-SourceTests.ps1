@@ -7,6 +7,7 @@ param(
     [string]$TestFilter = 'FullyQualifiedName~mRemoteNGTests.Security|FullyQualifiedName~mRemoteNGTests.Config.AtomicFileTests|FullyQualifiedName~mRemoteNGTests.Config.ProtectedSettingsProviderTests|FullyQualifiedName~CredentialSerializers|FullyQualifiedName~CsvConnectionsSerializerMremotengFormatTests'
 )
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 if ((Get-FileHash $SourceArchive -Algorithm SHA256).Hash -ne $ArchiveSha256) {
     throw 'Source archive hash mismatch.'
 }

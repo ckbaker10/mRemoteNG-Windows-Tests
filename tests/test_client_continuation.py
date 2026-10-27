@@ -33,7 +33,7 @@ class ClientContinuationTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def run_controller(self, fail_build=False):
+    def run_controller(self, fail_build=False, fail_source=False):
         calls = []
         def run_ps(script):
             calls.append(script)
@@ -42,7 +42,7 @@ class ClientContinuationTests(unittest.TestCase):
             if script == 'Initialize-BuildClient' and fail_build:
                 return SimpleNamespace(status_code=1, std_out=b'', std_err=b'synthetic failure')
             if 'Invoke-SourceTests.ps1' in script:
-                return SimpleNamespace(status_code=0, std_out=(
+                return SimpleNamespace(status_code=int(fail_source), std_out=(
                     'Run artifacts: C:\\mrng-lab\\runs\\' + 'a' * 12 + '-' + 'e' * 32
                 ).encode(), std_err=b'')
             if 'ToBase64String' in script:
@@ -51,7 +51,7 @@ class ClientContinuationTests(unittest.TestCase):
         with patch.object(controller, 'create_session', return_value=SimpleNamespace(run_ps=run_ps)), \
                 patch.object(controller.subprocess, 'run') as seal, \
                 patch.object(sys, 'argv', ['continue_client.py', str(self.config)]):
-            if fail_build:
+            if fail_build or fail_source:
                 with self.assertRaises(RuntimeError):
                     controller.main()
             else:
@@ -72,6 +72,13 @@ class ClientContinuationTests(unittest.TestCase):
         self.assertIn('c' * 64, source_script)
         self.assertIn('d' * 64, source_script)
         self.assertTrue((output / 'tests.trx').exists())
+        self.assertTrue((output / 'result.json').exists())
+
+    def test_failed_source_build_retains_diagnostics_and_failed_status(self):
+        record, _, output = self.run_controller(fail_source=True)
+        self.assertEqual(record['status'], 'failed')
+        self.assertEqual(record['phase'], 'source-tests')
+        self.assertTrue((output / 'build.log').exists())
         self.assertTrue((output / 'result.json').exists())
 
 
