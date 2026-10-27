@@ -49,6 +49,15 @@ class LabConfigurationTests(unittest.TestCase):
         iso_command = next(c.args[0] for c in self.run.call_args_list if c.args[0][0] == 'xorriso')
         self.assertIn('-J', iso_command)
 
+    def test_oobe_locale_is_configured_separately_from_windows_pe(self):
+        target = lab.prepare('client')
+        answer = ET.parse(target / 'seed' / 'autounattend.xml')
+        component = answer.find(".//u:settings[@pass='oobeSystem']/u:component[@name='Microsoft-Windows-International-Core']", NS)
+        self.assertIsNotNone(component)
+        self.assertEqual(component.find('u:InputLocale', NS).text, '0409:00000409')
+        for name in ('SystemLocale', 'UILanguage', 'UserLocale'):
+            self.assertEqual(component.find('u:' + name, NS).text, 'en-US')
+
     def test_management_is_loopback_and_guest_macs_are_unique(self):
         addresses = set()
         for machine in ('server', 'client'):
@@ -57,6 +66,8 @@ class LabConfigurationTests(unittest.TestCase):
                            if c.args[0][0] == 'qemu-system-x86_64')
             self.assertTrue(any('hostfwd=tcp:127.0.0.1:' in value for value in command))
             self.assertTrue(any('=127.0.0.1:55990' in value for value in command))
+            self.assertFalse(any('usb-kbd' in value for value in command), 'Use the working legacy keyboard route.')
+            self.assertIn('usb-tablet,bus=mrngusb.0', command)
             for value in command:
                 if value.startswith('e1000e,'):
                     address = value.split('mac=')[1]

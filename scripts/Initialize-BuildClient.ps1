@@ -1,9 +1,10 @@
 [CmdletBinding()]
 param([string]$LabRoot = 'C:\mrng-lab')
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 New-Item -ItemType Directory $LabRoot -Force | Out-Null
 $installer = Join-Path $LabRoot 'vs_BuildTools.exe'
-Invoke-WebRequest 'https://aka.ms/vs/18/release/vs_BuildTools.exe' -OutFile $installer
+Invoke-WebRequest 'https://aka.ms/vs/18/stable/vs_BuildTools.exe' -OutFile $installer -UseBasicParsing
 $signature = Get-AuthenticodeSignature $installer
 if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
     throw 'Build Tools bootstrapper has no valid Microsoft signature.'

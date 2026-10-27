@@ -91,6 +91,10 @@ def prepare(name):
     node(shell, 'ComputerName', 'MRNG-DC' if name == 'server' else 'MRNG-CLIENT')
     node(shell, 'TimeZone', 'W. Europe Standard Time')
     oobe = node(answer, 'settings', **{'pass':'oobeSystem'})
+    intl = component(oobe, 'Microsoft-Windows-International-Core')
+    for key, value in [('InputLocale', '0409:00000409'), ('SystemLocale', 'en-US'),
+                       ('UILanguage', 'en-US'), ('UserLocale', 'en-US')]:
+        node(intl, key, value)
     shell = component(oobe, 'Microsoft-Windows-Shell-Setup')
     options = node(shell, 'OOBE')
     for key in ['HideEULAPage','HideOnlineAccountScreens','HideWirelessSetupInOOBE']:
@@ -170,7 +174,6 @@ def start(name):
             '-netdev','socket,id=lab,'+('listen' if name=='server' else 'connect')+'=127.0.0.1:55990',
             '-device','e1000e,netdev=lab,mac=52:54:00:aa:'+('10' if name=='server' else '20')+':02',
             '-device','qemu-xhci,id=mrngusb','-device','usb-tablet,bus=mrngusb.0',
-            '-device','usb-kbd,bus=mrngusb.0',
             '-vnc','unix:'+str(target/'vnc.sock'),
             '-qmp','unix:'+str(target/'qmp.sock')+',server=on,wait=off',
             '-pidfile',str(pidfile),'-daemonize','-D',str(target/'qemu.log')]

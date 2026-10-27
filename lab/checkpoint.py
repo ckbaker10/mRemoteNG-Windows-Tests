@@ -1,4 +1,4 @@
-"""Offline checkpoints for owned lab guests, including firmware and TPM state."""
+"""Offline qcow2 checkpoints with pinned backing chains, firmware and TPM state."""
 import argparse
 import hashlib
 import json
@@ -44,19 +44,41 @@ def inventory(directory):
     return result
 
 
-def copy_state(source, destination):
+def image_chain(path):
+    images = json.loads(subprocess.check_output(
+        ['qemu-img', 'info', '--backing-chain', '--output=json', str(path)]))
+    for image in images:
+        source = Path(image['filename'])
+        file = source.resolve()
+        if image['format'] != 'qcow2' or not file.is_relative_to(ROOT) or source.is_symlink():
+            raise RuntimeError('Only owned qcow2 backing files are supported')
+    return images
+
+
+def chain_hashes(images, known=None):
+    known = known or {}
+    return {Path(image['filename']).resolve().relative_to(ROOT).as_posix():
+            known.get(Path(image['filename']).resolve()) or digest(Path(image['filename']))
+            for image in images}
+
+
+def copy_metadata(source, destination):
     destination.mkdir(mode=0o700)
     for name in REQUIRED:
         path = source / name
         if not path.is_file() or path.is_symlink():
             raise RuntimeError('Required guest state is missing or is a link')
-        subprocess.run(['cp', '--reflink=auto', '--sparse=always', '--preserve=mode,timestamps',
-                        '--', str(path), str(destination / name)], check=True)
+        if name != 'disk.qcow2':
+            shutil.copy2(path, destination / name)
     if not (source / 'tpm').is_dir() or (source / 'tpm').is_symlink():
         raise RuntimeError('TPM state is missing or is a link')
     shutil.copytree(source / 'tpm', destination / 'tpm', symlinks=True)
-    # inventory rejects links and special files before a checkpoint can be trusted.
     return inventory(destination)
+
+
+def create_overlay(path, backing):
+    subprocess.run(['qemu-img', 'create', '-q', '-f', 'qcow2', '-F', 'qcow2',
+                    '-b', str(backing), str(path)], check=True)
 
 
 def save(machine, label):
@@ -67,9 +89,27 @@ def save(machine, label):
     if destination.exists():
         raise FileExistsError('Checkpoint label already exists')
     started = int(time.time())
-    files = copy_state(guest, destination)
-    manifest = {'format_version': 1, 'machine': machine, 'label': label, 'started_host_epoch': started,
-                'finished_host_epoch': int(time.time()), 'sha256': files}
+    disk = guest / 'disk.qcow2'
+    images = image_chain(disk)
+    hashes = chain_hashes(images)
+    metadata = copy_metadata(guest, destination)
+    saved_disk = destination / 'disk.qcow2'
+    disk.rename(saved_disk)
+    try:
+        create_overlay(disk, saved_disk)
+    except Exception:
+        if disk.exists():
+            disk.rename(guest / ('failed-overlay-' + uuid.uuid4().hex))
+        saved_disk.rename(disk)
+        raise
+    metadata['disk.qcow2'] = hashes.pop(disk.relative_to(ROOT).as_posix())
+    hashes[saved_disk.relative_to(ROOT).as_posix()] = metadata['disk.qcow2']
+    os.chmod(saved_disk, 0o400)
+    manifest = {
+        'format_version': 2, 'machine': machine, 'label': label,
+        'started_host_epoch': started, 'finished_host_epoch': int(time.time()),
+        'sha256': metadata, 'backing_chain': hashes, 'virtual_size': images[0]['virtual-size']
+    }
     (destination / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     os.chmod(destination / 'manifest.json', 0o600)
     return destination
@@ -79,12 +119,22 @@ def restore(machine, label):
     guest = ensure_offline(machine)
     checkpoint = ROOT / 'checkpoints' / machine / label
     manifest = json.loads((checkpoint / 'manifest.json').read_text())
-    if manifest.get('format_version') != 1 or manifest['machine'] != machine or manifest['label'] != label or inventory(checkpoint) != manifest['sha256']:
-        raise RuntimeError('Checkpoint identity or hashes do not match')
-    # Complete and verify a staged copy before moving any current state.
+    if manifest.get('format_version') != 2 or manifest['machine'] != machine or manifest['label'] != label:
+        raise RuntimeError('Checkpoint format or identity does not match')
+    files = inventory(checkpoint)
+    if files != manifest['sha256']:
+        raise RuntimeError('Checkpoint hashes do not match')
+    saved_disk = checkpoint / 'disk.qcow2'
+    if chain_hashes(image_chain(saved_disk), {saved_disk: files['disk.qcow2']}) != manifest['backing_chain']:
+        raise RuntimeError('Backing chain does not match the pinned checkpoint')
     staged = ROOT / (machine + '-restore-' + uuid.uuid4().hex)
-    if copy_state(checkpoint, staged) != manifest['sha256']:
-        raise RuntimeError('Restored copy does not match checkpoint hashes')
+    copied = copy_metadata(checkpoint, staged)
+    if copied != {name: value for name, value in files.items() if name != 'disk.qcow2'}:
+        raise RuntimeError('Restored firmware or TPM metadata does not match')
+    create_overlay(staged / 'disk.qcow2', saved_disk)
+    images = image_chain(staged / 'disk.qcow2')
+    if Path(images[0]['full-backing-filename']).resolve() != saved_disk or images[0]['virtual-size'] != manifest['virtual_size']:
+        raise RuntimeError('Restored overlay has an unexpected backing file or size')
     previous = ROOT / (machine + '-before-restore-' + uuid.uuid4().hex)
     guest.rename(previous)
     try:

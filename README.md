@@ -69,10 +69,26 @@ werden im Gast abgelehnt. Die Laboradministration ist kein Produktionsprofil.
 `seal` hängt beide Setupmedien aus und verhindert ihre erneute Einbindung beim
 nächsten Start. Erst nach erfolgreicher Installation und Gastbereinigung verwenden.
 
+Für sensible Labordaten unterstützt `lab/remote.py --input-file <Datei>` einen
+separaten verschlüsselten stdin-Kanal. Das aufgerufene Skript liest
+`[Console]::In.ReadToEnd()`; die Daten werden nicht in den kodierten Befehl oder
+seine Prozessargumente eingesetzt. Eingabedateien mit Geheimnissen bleiben
+geschützt unter `work/` und dürfen nicht durch Testskripte ausgegeben werden.
+
 `Initialize-BuildClient.ps1` prüft die Microsoft-Authenticode-Signatur des
 Installers und installiert Visual Studio 2026 Build Tools mit Desktop-Workload
 und Windows SDK 26100. Nach einem erforderlichen Neustart den Status erneut
 prüfen. Die installierte .NET-10-SDK-Version vor dem Build erfassen.
+Der VS-2026-Bootstrapper verwendet den offiziellen `18/stable`-Kanal. Eine
+HTML-Antwort wird von der Signaturprüfung abgewiesen. `Get-BuildToolSignature.ps1`
+und `Get-BuildClientProgress.ps1` erfassen Signatur beziehungsweise laufende
+Installationsprozesse ohne deren Befehlszeilen auszugeben.
+
+`Initialize-LabDomainRole.ps1` installiert AD DS, DNS und GPMC ausschließlich
+auf `MRNG-DC` mit Labormarker. Es erstellt noch keine Domäne. In der
+OOBE-Konfiguration sind die vier Sprach-/Tastaturwerte auch im Pass
+`oobeSystem` festgelegt. Die Eingabe verwendet die getestete PS/2-Tastatur;
+das zusätzliche USB-Keyboard wird nicht angelegt.
 
 Einen sauberen, expliziten Quellcommit mit `git archive --format=zip` übertragen.
 `scripts/Invoke-SourceTests.ps1` verlangt Quellcommit und SHA-256 des Archivs,
@@ -129,13 +145,18 @@ swtpm_ioctl --unix "$MRNG_LAB_ROOT/client/tpm.sock" -s
 
 Wenn Systemd den TPM-Prozess bereits zusammen mit QEMU beendet hat, entfällt
 der ioctl-Aufruf. Ein Checkpoint erfasst Festplatte, UEFI-Variablen, TPM-Zustand,
-Laboridentität und Installationsmarker mit SHA-256. `restore client <label>`
-verifiziert und kopiert vollständig, bevor es den aktuellen Zustand ersetzt;
+Laboridentität und Installationsmarker mit SHA-256. Die Platte wird als
+schreibgeschützte qcow2-Basis gesichert; der Gast schreibt danach in ein neues
+Overlay. Die vollständige Basiskette wird gehasht und beim Wiederherstellen
+geprüft. Diese Dateien zusammen erhalten und weder verschieben noch verändern.
+`restore client <label>` erzeugt ein neues Overlay und prüft die Metadaten,
+bevor es den aktuellen Zustand ersetzt;
 der bisherige Zustand wird unter einem neuen `client-before-restore-*` erhalten.
 Keine laufenden Gäste sichern und keinen Checkpoint als erfolgreich ansehen,
 bevor eine tatsächliche Wiederherstellung im Gast geprüft wurde. Die
-Hostregressionen prüfen Ablauf, Hashfehler und Prozesssperre mit synthetischen
-Dateien; der reale Windows-Wiederherstellungstest ist noch offen.
+Hostregressionen prüfen tatsächliche kleine qcow2-Ketten, Datenrücknahme,
+Hashfehler und Prozesssperre. Der reale Windows-Wiederherstellungstest wird
+zusätzlich mit einem nachträglich angelegten Gastmarker geprüft.
 
 Rohbelege unter `work/` mit exakten Befehlen, Eingabe-SHA-256, Werkzeugversionen,
 Hostzeit und Exitstatus erfassen. Bereinigte Ergebnisberichte dürfen unter
