@@ -16,7 +16,7 @@ Ubuntu-OVMF-Pfade in `lab/manage.py`.
 ```bash
 uv venv .venv
 uv pip sync --python .venv/bin/python requirements.txt --require-hashes
-python3 -m unittest discover -s tests -v
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
 VM-Zustände, Medien, Setupantworten, temporäre Laborpasswörter und Rohbelege
@@ -95,6 +95,17 @@ Ablehnung falscher Registrytypen/Werte. Das Skript verweigert vorhandene Policie
 läuft nur auf `MRNG-CLIENT` mit Labormarker und entfernt ausschließlich seine
 eigenen Testschlüssel. Diese direkte Registryprüfung ergänzt einen späteren
 Domänen-GPO-Test; sie ersetzt ihn nicht.
+
+`lab/continue_client.py <lokale Konfiguration>` kann eine bereits gestartete
+Clientinstallation bis Werkzeuginstallation und Quelltests fortsetzen. Es wartet
+begrenzt auf WinRM, bereinigt Setupzugangsdaten, hängt Medien aus und prüft beide
+übertragenen Archivhashes. Die Konfiguration enthält `source_commit`,
+`source_archive`, `source_sha256`, `harness_commit` und `harness_sha256`.
+Der separate HTTP-Transferdienst darf ausschließlich öffentliche Quellarchive
+an Loopback-Port 55987 anbieten. Controller und Transferdienst als eigene
+User-Systemd-Units ausführen. Fehler stoppen den Lauf; sie lösen keine
+automatischen Buildwiederholungen oder Policyänderungen aus. Hostzeit, Status,
+TRX und Ergebnis-JSON liegen in einem neuen `work/client-*`-Verzeichnis.
 
 ## Nachweise
 
