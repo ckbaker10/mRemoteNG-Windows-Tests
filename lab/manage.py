@@ -116,7 +116,8 @@ def prepare(name):
     logon = node(shell, 'AutoLogon')
     node(logon, 'Username', account['username'])
     node(logon, 'Enabled', 'true')
-    node(logon, 'LogonCount', 1)
+    # The client stays signed in for desktop evidence; the server signs in once for bootstrap.
+    node(logon, 'LogonCount', 9999999 if name == 'client' else 1)
     password = node(logon, 'Password')
     node(password, 'Value', account['password'])
     node(password, 'PlainText', 'true')
@@ -132,6 +133,7 @@ def prepare(name):
     ET.ElementTree(answer).write(seed/'autounattend.xml', encoding='utf-8', xml_declaration=True)
     os.chmod(seed/'autounattend.xml', 0o600)
     shutil.copyfile(Path(__file__).with_name('bootstrap.ps1'), seed/'bootstrap.ps1')
+    shutil.copyfile(Path(__file__).resolve().parents[1]/'scripts'/'Set-LabNoLock.ps1', seed/'Set-LabNoLock.ps1')
     subprocess.run(['xorriso','-as','mkisofs','-quiet','-J','-r','-V','MRNGLAB','-o',str(target/'seed.iso'),str(seed)],check=True)
     os.chmod(target/'seed.iso',0o600)
     if not (target/'disk.qcow2').exists():

@@ -12,5 +12,7 @@ New-NetFirewallRule -DisplayName 'mRemoteNG lab WinRM' -Direction Inbound `
 # Remove cached setup answers containing the lab-only temporary account password.
 Remove-Item C:\Windows\Panther\unattend.xml,C:\Windows\Panther\Unattend\unattend.xml `
     -ErrorAction SilentlyContinue
+# Keep the lab desktop signed in and unlocked so evidence screenshots show the real desktop.
+try { & (Join-Path $PSScriptRoot 'Set-LabNoLock.ps1') } catch { Write-Warning "No-lock desktop settings failed: $_" }
 Set-Content C:\mrng-lab\ready.txt -Value 'WinRM ready'
 Stop-Transcript
