@@ -85,6 +85,12 @@ Der Standardfilter deckt Sicherheit, Settings und Credential-Serializer ab.
 WinForms-Dialogtests benötigen eine interaktive Windows-Sitzung. Registrytests
 verwenden eigene HKCU-Testschlüssel; reale HKLM-/GPO-Abnahme wird gesondert im
 Labor ausgeführt. Kein produktives GPO oder App-Control-Profil wird angewendet.
+Nach dem Quellbuild startet `Invoke-InteractiveUnitTests.ps1 -ProjectPath <Pfad>`
+die Passwortdialog-Regressionsklasse über eine eigene kurzlebige Aufgabe in der
+bereits angemeldeten Laborsitzung. Die Aufgabe benötigt kein gespeichertes
+Anmeldepasswort, ist auf fünf Minuten begrenzt und wird anschließend entfernt.
+Ein fehlender Desktop oder ein fehlgeschlagener TRX-Lauf beendet die Prüfung
+mit Fehler. Der reguläre Quelltestfilter enthält zusätzlich die CSV-Exporttests.
 
 `probes/PolicyProbe` referenziert die tatsächliche mRemoteNG-Assembly. Mit
 Windows-MSBuild und `-p:MRemoteNGSource=<extrahierter Quellpfad>` bauen.

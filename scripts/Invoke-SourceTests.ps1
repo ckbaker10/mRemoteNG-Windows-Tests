@@ -4,7 +4,7 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[a-fA-F0-9]{64}$')][string]$ArchiveSha256,
     [Parameter(Mandatory)][ValidatePattern('^[a-fA-F0-9]{40}$')][string]$SourceCommit,
     [string]$RunsRoot = 'C:\mrng-lab\runs',
-    [string]$TestFilter = 'FullyQualifiedName~mRemoteNGTests.Security|FullyQualifiedName~mRemoteNGTests.Config.AtomicFileTests|FullyQualifiedName~mRemoteNGTests.Config.ProtectedSettingsProviderTests|FullyQualifiedName~CredentialSerializers'
+    [string]$TestFilter = 'FullyQualifiedName~mRemoteNGTests.Security|FullyQualifiedName~mRemoteNGTests.Config.AtomicFileTests|FullyQualifiedName~mRemoteNGTests.Config.ProtectedSettingsProviderTests|FullyQualifiedName~CredentialSerializers|FullyQualifiedName~CsvConnectionsSerializerMremotengFormatTests'
 )
 $ErrorActionPreference = 'Stop'
 if ((Get-FileHash $SourceArchive -Algorithm SHA256).Hash -ne $ArchiveSha256) {
