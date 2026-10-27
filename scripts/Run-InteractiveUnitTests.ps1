@@ -11,10 +11,13 @@ try {
         throw 'The dialog tests require an interactive user session.'
     }
     $dotnet = 'C:\Program Files\dotnet\dotnet.exe'
-    & $dotnet test $ProjectPath --no-build --no-restore -p:Platform=x64 --configuration Debug `
-        --filter 'FullyQualifiedName~mRemoteNGTests.UI.Forms.PasswordFormTests' `
-        --logger 'trx;LogFileName=interactive.trx' --results-directory $OutputDirectory *> (Join-Path $OutputDirectory 'interactive.log')
-    $exitCode = $LASTEXITCODE
+    $exitCode = & {
+        $ErrorActionPreference = 'Continue'
+        & $dotnet test $ProjectPath --no-build --no-restore -p:Platform=x64 --configuration Debug `
+            --filter 'FullyQualifiedName~mRemoteNGTests.UI.Forms.PasswordFormTests' `
+            --logger 'trx;LogFileName=interactive.trx' --results-directory $OutputDirectory *> (Join-Path $OutputDirectory 'interactive.log')
+        $LASTEXITCODE
+    }
     if ($exitCode) { throw "Interactive NUnit run failed: $exitCode" }
     [xml]$trx = Get-Content (Join-Path $OutputDirectory 'interactive.trx') -Raw
     $counters = $trx.SelectSingleNode('//*[local-name()="Counters"]')

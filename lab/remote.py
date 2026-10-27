@@ -20,10 +20,12 @@ def run_ps_with_input(session, script, payload):
     """Send data through encrypted stdin; never place it in script/command arguments."""
     if len(payload) > 65536:
         raise ValueError('Input exceeds the bounded lab message size')
-    loader = ("$ProgressPreference='SilentlyContinue';[Console]::InputEncoding=[Text.Encoding]::UTF8;"
+    loader = ("$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';try{"
+              "[Console]::InputEncoding=[Text.Encoding]::UTF8;"
               "$e=[Console]::In.ReadToEnd()|ConvertFrom-Json;"
               "[Console]::SetIn([IO.StringReader]::new([Text.Encoding]::UTF8.GetString("
-              "[Convert]::FromBase64String($e.input))));&([ScriptBlock]::Create($e.script))")
+              "[Convert]::FromBase64String($e.input))));&([ScriptBlock]::Create($e.script));"
+              "if(-not $?){exit 1}}catch{Write-Error $_ -ErrorAction Continue;exit 1}")
     encoded = base64.b64encode(loader.encode('utf-16-le')).decode('ascii')
     envelope = json.dumps({'script': script, 'input': base64.b64encode(payload).decode('ascii')}).encode('ascii')
     if len(envelope) > 65536:

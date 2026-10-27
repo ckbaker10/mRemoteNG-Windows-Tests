@@ -27,9 +27,14 @@ try {
     & $msbuild $project /restore /t:Build /p:Configuration=Debug /p:Platform=x64 /nologo "/bl:$run\build.binlog" *> (Join-Path $run 'build.log')
     $buildExit = $LASTEXITCODE
     if ($buildExit) { throw "Windows build failed: $buildExit; see build.log" }
-    & $dotnet test $project --no-build --no-restore -p:Platform=x64 --configuration Debug `
-        --filter $TestFilter --logger 'trx;LogFileName=tests.trx' --results-directory $run *> (Join-Path $run 'test.log')
-    $testExit = $LASTEXITCODE
+    $testExit = & {
+        # Windows PowerShell 5.1 turns native stderr into error records. Retain
+        # those diagnostics, then judge the native process by its exit status.
+        $ErrorActionPreference = 'Continue'
+        & $dotnet test $project --no-build --no-restore -p:Platform=x64 --configuration Debug `
+            --filter $TestFilter --logger 'trx;LogFileName=tests.trx' --results-directory $run *> (Join-Path $run 'test.log')
+        $LASTEXITCODE
+    }
     if ($testExit) { throw "Windows tests failed: $testExit; see test.log" }
     [xml]$trx = Get-Content (Join-Path $run 'tests.trx') -Raw
     $counters = $trx.SelectSingleNode('//*[local-name()="Counters"]')
