@@ -20,6 +20,8 @@ $dotnet = 'C:\Program Files\dotnet\dotnet.exe'
 $started = [DateTime]::UtcNow
 $buildExit = $null
 $testExit = $null
+$status = 'failed'
+$counters = $null
 try {
     & $msbuild $project /restore /t:Build /p:Configuration=Debug /p:Platform=x64 /nologo "/bl:$run\build.binlog" *> (Join-Path $run 'build.log')
     $buildExit = $LASTEXITCODE
@@ -28,6 +30,13 @@ try {
         --filter $TestFilter --logger 'trx;LogFileName=tests.trx' --results-directory $run *> (Join-Path $run 'test.log')
     $testExit = $LASTEXITCODE
     if ($testExit) { throw "Windows tests failed: $testExit; see test.log" }
+    [xml]$trx = Get-Content (Join-Path $run 'tests.trx') -Raw
+    $counters = $trx.SelectSingleNode('//*[local-name()="Counters"]')
+    if ($null -eq $counters -or [int]$counters.total -le 0 -or [int]$counters.executed -le 0 -or
+        [int]$counters.failed -ne 0 -or [int]$counters.error -ne 0) {
+        throw 'TRX does not prove a successful nonempty test run.'
+    }
+    $status = 'passed'
 } finally {
     [pscustomobject]@{
         SourceCommit = $SourceCommit
@@ -36,6 +45,11 @@ try {
         FinishedUtc = [DateTime]::UtcNow.ToString('o')
         BuildExitCode = $buildExit
         TestExitCode = $testExit
+        Status = $status
+        TestTotal = if ($counters) { [int]$counters.total } else { $null }
+        TestExecuted = if ($counters) { [int]$counters.executed } else { $null }
+        TestPassed = if ($counters) { [int]$counters.passed } else { $null }
+        TestFailed = if ($counters) { [int]$counters.failed } else { $null }
         Filter = $TestFilter
         OS = [Environment]::OSVersion.Version.ToString()
         MSBuildVersion = (Get-Item $msbuild).VersionInfo.FileVersion

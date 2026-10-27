@@ -22,6 +22,8 @@ if (-not (Test-Path $msbuild)) { throw 'Windows MSBuild is missing.' }
 if ($LASTEXITCODE) { throw 'MSBuild version check failed.' }
 & 'C:\Program Files\dotnet\dotnet.exe' --list-sdks
 if ($LASTEXITCODE) { throw '.NET SDK check failed.' }
+$sdks = & 'C:\Program Files\dotnet\dotnet.exe' --list-sdks
+if (-not ($sdks | Where-Object { $_ -match '^10\.' })) { throw '.NET 10 SDK is required.' }
 [pscustomobject]@{
     FinishedUtc = [DateTime]::UtcNow.ToString('o')
     InstallerSha256 = (Get-FileHash $installer -Algorithm SHA256).Hash
