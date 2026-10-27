@@ -7,10 +7,22 @@ import unittest
 from unittest.mock import Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lab'))
-from remote import run_ps_with_input
+from remote import run_ps_with_input, bind_parameters
 
 
 class EncryptedInputTests(unittest.TestCase):
+    def test_parameters_remain_data_and_preserve_boolean_types(self):
+        script, data = bind_parameters('param($Name,[switch]$Enabled)', {'Name': 'synthetic-secret', 'Enabled': False}, b'separate-input')
+        self.assertNotIn('synthetic-secret', script)
+        self.assertNotIn('separate-input', script)
+        parsed = json.loads(data)
+        self.assertIs(parsed['parameters']['Enabled'], False)
+        self.assertEqual(base64.b64decode(parsed['input']), b'separate-input')
+
+    def test_invalid_parameter_names_are_rejected_before_invocation(self):
+        with self.assertRaises(ValueError):
+            bind_parameters('param($Name)', {'Name;throw': 'synthetic'})
+
     def setUp(self):
         self.protocol = Mock()
         self.protocol.open_shell.return_value = 'shell'
@@ -22,6 +34,7 @@ class EncryptedInputTests(unittest.TestCase):
         payload = b'{"synthetic":"stdin-only-value"}'
         result = run_ps_with_input(self.session, '[Console]::In.ReadToEnd() | Out-Null', payload)
         self.assertEqual(result.status_code, 0)
+        self.protocol.open_shell.assert_called_once_with(noprofile=False, codepage=65001)
         arguments = self.protocol.run_command.call_args.args[2]
         decoded = base64.b64decode(arguments[-1]).decode('utf-16-le')
         self.assertNotIn('stdin-only-value', decoded)

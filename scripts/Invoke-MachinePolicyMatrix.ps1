@@ -10,7 +10,16 @@ if ($env:COMPUTERNAME -ne 'MRNG-CLIENT' -or -not (Test-Path C:\mrng-lab\ready.tx
 if (-not [Environment]::Is64BitProcess) { throw 'Use 64-bit PowerShell.' }
 $machine = 'HKLM:\SOFTWARE\Policies\mRemoteNG\Security'
 $user = 'HKCU:\SOFTWARE\Policies\mRemoteNG\Security'
-if ((Test-Path $machine) -or (Test-Path $user)) { throw 'Existing policies found; refusing to overwrite them.' }
+$machineExisted = Test-Path $machine
+$userExisted = Test-Path $user
+foreach ($path in @($machine, $user)) {
+    if (Test-Path $path) {
+        $key = Get-Item $path
+        if ($key.GetValueNames().Count -or $key.GetSubKeyNames().Count) {
+            throw 'Existing policy values found; refusing to overwrite them.'
+        }
+    }
+}
 $ProbeDll = (Resolve-Path $ProbeDll).Path
 $dotnet = 'C:\Program Files\dotnet\dotnet.exe'
 $results = [Collections.Generic.List[object]]::new()
@@ -54,8 +63,21 @@ try {
     New-ItemProperty $machine RequireMasterPassword -Value 2 -PropertyType DWord -Force | Out-Null
     if (-not (Invoke-Probe 'invalid-policy-value' 2).PolicyLoadFailed) { throw 'Invalid policy value accepted.' }
 } finally {
-    if ($machineCreated) { Remove-Item $machine -Recurse -Force }
-    if ($userCreated) { Remove-Item $user -Recurse -Force }
+    if ($machineCreated) {
+        if ($machineExisted) {
+            foreach ($name in @('RequireMasterPassword', 'MinimumMasterPasswordLength', 'AllowPersistentUnlock',
+                    'RequireFullEncryption', 'RequireUppercase', 'RequireLowercase', 'RequireDigit', 'RequireSpecialCharacter')) {
+                if ((Get-Item $machine).GetValueNames() -contains $name) { Remove-ItemProperty $machine $name }
+            }
+        } else { Remove-Item $machine -Recurse -Force }
+    }
+    if ($userCreated) {
+        if ($userExisted) {
+            foreach ($name in @('RequireMasterPassword', 'AllowPersistentUnlock')) {
+                if ((Get-Item $user).GetValueNames() -contains $name) { Remove-ItemProperty $user $name }
+            }
+        } else { Remove-Item $user -Recurse -Force }
+    }
     $results | ConvertTo-Json -Depth 8 | Set-Content $OutputFile -Encoding UTF8
 }
 'Machine-policy matrix passed; temporary test policies removed.'

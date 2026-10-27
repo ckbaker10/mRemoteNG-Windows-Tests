@@ -1,175 +1,86 @@
-# mRemoteNG-Windows-Tests
+mRemoteNG Windows tests
 
-Automatisierte Abnahme der mRemoteNG-Sicherheitsbranches in einem eigenen
-Windows-Labor. Produktänderungen und ihre NUnit-Regressionstests bleiben im
-[mRemoteNG-Fork](https://github.com/ckbaker10/mRemoteNG).
+Windows build, password-dialog and GPO tests for the mRemoteNG security branches.
+Application-control enforcement remains unverified.
 
-Der Windows-Build und die GPO-/Anwendungskontrollabnahme sind noch offen.
-Hosttests und Syntaxprüfungen sind kein Nachweis der Windows-Durchsetzung.
+The product changes stay in [mRemoteNG](https://github.com/ckbaker10/mRemoteNG).
+This repository contains the lab and acceptance tests.
 
-## Einrichtung auf dem Linux-Host
-
-Voraussetzungen: KVM-Zugriff ohne root, QEMU, swtpm, OVMF mit Microsoft-Schlüsseln,
-xorriso und ausreichend RAM/Plattenplatz. Die Startkonfiguration verwendet die
-Ubuntu-OVMF-Pfade in `lab/manage.py`.
+Run these commands from this repository on a Linux host with KVM, QEMU, swtpm,
+Microsoft OVMF firmware, xorriso and uv. The two guests use 20 GB RAM in total.
+The default firmware paths match Ubuntu.
 
 ```bash
-uv venv .venv
+uv venv --python 3.13.15 .venv
 uv pip sync --python .venv/bin/python requirements.txt --require-hashes
+export MRNG_LAB_ROOT="$PWD/work/windows-lab"
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-VM-Zustände, Medien, Setupantworten, temporäre Laborpasswörter und Rohbelege
-gehören ausschließlich in das ignorierte `work/`. Die Programme geben keine
-Laborpasswörter aus. Zugangsdaten in `credentials.json` sind nur für die eigenen
-wegwerfbaren Gäste bestimmt. Setup-ISOs enthalten diese temporären Zugangsdaten.
+For the existing lab on mediaserv, use
+`export MRNG_LAB_ROOT=/opt/paseo-development/mRemoteNG/work/windows-lab` instead.
 
-Standardzustand: `work/windows-lab`. Ein vorhandenes Labor kann ausdrücklich
-übernommen werden, ohne Platten zu verschieben:
-
-```bash
-export MRNG_LAB_ROOT=/opt/paseo-development/mRemoteNG/work/windows-lab
-```
-
-Offizielle Evaluierungsmedien unter `$MRNG_LAB_ROOT/media/windows11.iso` und
-`server2025.iso` bereitstellen. Quellen:
-[Windows 11](https://www.microsoft.com/en-us/evalcenter/evaluate-windows-11-enterprise),
-[Windows Server 2025](https://www.microsoft.com/en-us/evalcenter/evaluate-windows-server-2025).
-Download-URL, Datum, ISO-Hash und Werkzeugversionen im lokalen Nachweis erfassen.
-Medien und Gastsysteme werden nicht mit diesem Repository verteilt.
+For a fresh lab, put the official Windows 11 Enterprise and Server 2025 evaluation
+ISOs under `$MRNG_LAB_ROOT/media/windows11.iso` and `server2025.iso`. Then:
 
 ```bash
 .venv/bin/python lab/manage.py start server
-.venv/bin/python lab/manage.py start client
 .venv/bin/python lab/manage.py boot server
+.venv/bin/python lab/manage.py start client
 .venv/bin/python lab/manage.py boot client
 ```
 
-`boot` setzt die jeweilige VM zurück und quittiert einmalig den CD-Boot-Prompt.
-Nur beim ersten Start verwenden. Bei längeren Arbeiten die eigenen Prozesse
-über User-Systemd-Units mit PIDFile ausführen; bestehende fremde Prozesse und
-belegte Ports nicht übernehmen. Die Verwaltung bindet ausschließlich an
-Loopback (Client 55985, Server 55986); die getrennte Gastverbindung nutzt 55990.
-VNC und QMP verwenden Unix-Sockets im geschützten Zustandsverzeichnis.
-
-## Gastverwaltung und Build
-
-Nach abgeschlossener Installation:
+Use `boot` only for the first installation. Finish Windows setup and wait for
+`BootstrapReady` from the status command. Setup details and ISO links are in
+[docs/LAB.md](docs/LAB.md).
 
 ```bash
 .venv/bin/python lab/remote.py client scripts/Get-LabStatus.ps1
 .venv/bin/python lab/remote.py client scripts/Clear-LabSetupSecrets.ps1
 .venv/bin/python lab/manage.py seal client
 .venv/bin/python lab/remote.py client scripts/Initialize-BuildClient.ps1
+.venv/bin/python lab/remote.py server scripts/Clear-LabSetupSecrets.ps1
+.venv/bin/python lab/manage.py seal server
 ```
 
-Für den Server Status und Setupbereinigung ebenfalls ausführen. WinRM benutzt
-NTLM mit erzwungener Nachrichtenverschlüsselung; unverschlüsselte Nachrichten
-werden im Gast abgelehnt. Die Laboradministration ist kein Produktionsprofil.
-`seal` hängt beide Setupmedien aus und verhindert ihre erneute Einbindung beim
-nächsten Start. Erst nach erfolgreicher Installation und Gastbereinigung verwenden.
+Run the unit tests before enabling the lab GPO. On an already joined client,
+use the baseline switch in [docs/LAB.md](docs/LAB.md) first.
 
-Für sensible Labordaten unterstützt `lab/remote.py --input-file <Datei>` einen
-separaten verschlüsselten stdin-Kanal. Das aufgerufene Skript liest
-`[Console]::In.ReadToEnd()`; die Daten werden nicht in den kodierten Befehl oder
-seine Prozessargumente eingesetzt. Eingabedateien mit Geheimnissen bleiben
-geschützt unter `work/` und dürfen nicht durch Testskripte ausgegeben werden.
-
-`Initialize-BuildClient.ps1` prüft die Microsoft-Authenticode-Signatur des
-Installers und installiert Visual Studio 2026 Build Tools mit Desktop-Workload
-und Windows SDK 26100. Nach einem erforderlichen Neustart den Status erneut
-prüfen. Die installierte .NET-10-SDK-Version vor dem Build erfassen.
-Der VS-2026-Bootstrapper verwendet den offiziellen `18/stable`-Kanal. Eine
-HTML-Antwort wird von der Signaturprüfung abgewiesen. `Get-BuildToolSignature.ps1`
-und `Get-BuildClientProgress.ps1` erfassen Signatur beziehungsweise laufende
-Installationsprozesse ohne deren Befehlszeilen auszugeben.
-
-`Initialize-LabDomainRole.ps1` installiert AD DS, DNS und GPMC ausschließlich
-auf `MRNG-DC` mit Labormarker. Es erstellt noch keine Domäne. In der
-OOBE-Konfiguration sind die vier Sprach-/Tastaturwerte auch im Pass
-`oobeSystem` festgelegt. Die Eingabe verwendet die getestete PS/2-Tastatur;
-das zusätzliche USB-Keyboard wird nicht angelegt.
-
-Einen sauberen, expliziten Quellcommit mit `git archive --format=zip` übertragen.
-`scripts/Invoke-SourceTests.ps1` verlangt Quellcommit und SHA-256 des Archivs,
-extrahiert in ein neues Laufverzeichnis, baut mit Windows-MSBuild und erzeugt
-TRX, Binlog und `result.json`. Der Commitparameter ist die Host-Provenienz des
-Archivs; der Gast kann einen Git-Commit aus einem ZIP allein nicht verifizieren.
-Archivhash und `git archive`-Befehl deshalb gemeinsam im Hostnachweis erfassen.
-
-Der Standardfilter deckt Sicherheit, Settings und Credential-Serializer ab.
-WinForms-Dialogtests benötigen eine interaktive Windows-Sitzung. Registrytests
-verwenden eigene HKCU-Testschlüssel; reale HKLM-/GPO-Abnahme wird gesondert im
-Labor ausgeführt. Kein produktives GPO oder App-Control-Profil wird angewendet.
-Nach dem Quellbuild startet `Invoke-InteractiveUnitTests.ps1 -ProjectPath <Pfad>`
-die Passwortdialog-Regressionsklasse über eine eigene kurzlebige Aufgabe in der
-bereits angemeldeten Laborsitzung. Die Aufgabe benötigt kein gespeichertes
-Anmeldepasswort, ist auf fünf Minuten begrenzt und wird anschließend entfernt.
-Ein fehlender Desktop oder ein fehlgeschlagener TRX-Lauf beendet die Prüfung
-mit Fehler. Der reguläre Quelltestfilter enthält zusätzlich die CSV-Exporttests.
-
-`probes/PolicyProbe` referenziert die tatsächliche mRemoteNG-Assembly. Mit
-Windows-MSBuild und `-p:MRemoteNGSource=<extrahierter Quellpfad>` bauen.
-`Invoke-MachinePolicyMatrix.ps1` startet für jede Policybelegung einen neuen
-Probeprozess, damit der Prozesscache keine Registryänderungen verdeckt. Es prüft
-HKCU-Isolation, maschinenweite Passwortvorgaben, Settings-Verschlüsselung und
-Ablehnung falscher Registrytypen/Werte. Das Skript verweigert vorhandene Policies,
-läuft nur auf `MRNG-CLIENT` mit Labormarker und entfernt ausschließlich seine
-eigenen Testschlüssel. Diese direkte Registryprüfung ergänzt einen späteren
-Domänen-GPO-Test; sie ersetzt ihn nicht.
-
-`lab/continue_client.py <lokale Konfiguration>` kann eine bereits gestartete
-Clientinstallation bis Werkzeuginstallation und Quelltests fortsetzen. Es wartet
-begrenzt auf WinRM, bereinigt Setupzugangsdaten, hängt Medien aus und prüft beide
-übertragenen Archivhashes. Die Konfiguration enthält `source_commit`,
-`source_archive`, `source_sha256`, `harness_commit` und `harness_sha256`.
-Optional legt `harness_archive` einen unveränderlichen Dateinamen des
-Testarchivs fest; ohne Angabe wird `windows-tests.zip` verwendet.
-Der separate HTTP-Transferdienst darf ausschließlich öffentliche Quellarchive
-an Loopback-Port 55987 anbieten. Controller und Transferdienst als eigene
-User-Systemd-Units ausführen. Fehler stoppen den Lauf; sie lösen keine
-automatischen Buildwiederholungen oder Policyänderungen aus. Hostzeit, Status,
-TRX und Ergebnis-JSON liegen in einem neuen `work/client-*`-Verzeichnis.
-
-Nach einer unterbrochenen WinRM-Warteverbindung kann `--resume-installed` die
-abgeschlossene Werkzeuginstallation prüfen und den Quelltestlauf fortsetzen.
-Installationsnachweis, Installerhash, Microsoft-Signatur, MSBuild und .NET-10-SDK
-werden dabei erneut geprüft. Die gehashten Testskripte starten mit einer nur
-für ihren PowerShell-Prozess gesetzten Ausführungsrichtlinie.
-
-## Nachweise
-
-Vor Anwendungskontrolltests den Gast sauber herunterfahren und den zugehörigen
-TPM-Emulator beenden. `lab/checkpoint.py` verweigert laufende QEMU-/TPM-Prozesse:
+Create the input archives from committed sources. In a separate terminal, serve
+only `work/transfer` with `python3 -m http.server 55987 --bind 127.0.0.1 --directory work/transfer`.
 
 ```bash
-.venv/bin/python lab/manage.py powerdown client
-# Erst nach tatsächlich beendetem Gast:
-swtpm_ioctl --unix "$MRNG_LAB_ROOT/client/tpm.sock" -s
-.venv/bin/python lab/checkpoint.py save client before-app-control
+PRODUCT_COMMIT=7441b3a7f9688faac3254b9912469eb7b37c2203
+RUN_CONFIG=$(.venv/bin/python lab/package_inputs.py ../mRemoteNG "$PRODUCT_COMMIT")
+SOURCE_RESULT=$(.venv/bin/python lab/continue_client.py "$RUN_CONFIG" --resume-installed)
+printf '%s\n' "$SOURCE_RESULT"
+GUEST_RUN=${SOURCE_RESULT##*guest artifacts: }
+HARNESS_ARCHIVE=$(.venv/bin/python -c 'import json,sys; print(json.load(open(sys.argv[1]))["harness_archive"])' "$RUN_CONFIG")
+HARNESS_SHA=$(.venv/bin/python -c 'import json,sys; print(json.load(open(sys.argv[1]))["harness_sha256"])' "$RUN_CONFIG")
+PROBE_DLL=$(.venv/bin/python lab/transfer_probe.py "$HARNESS_ARCHIVE" "$HARNESS_SHA" "$GUEST_RUN\source" --print-path-only)
 ```
 
-Wenn Systemd den TPM-Prozess bereits zusammen mit QEMU beendet hat, entfällt
-der ioctl-Aufruf. Ein Checkpoint erfasst Festplatte, UEFI-Variablen, TPM-Zustand,
-Laboridentität und Installationsmarker mit SHA-256. Die Platte wird als
-schreibgeschützte qcow2-Basis gesichert; der Gast schreibt danach in ein neues
-Overlay. Die vollständige Basiskette wird gehasht und beim Wiederherstellen
-geprüft. Diese Dateien zusammen erhalten und weder verschieben noch verändern.
-`restore client <label>` erzeugt ein neues Overlay und prüft die Metadaten,
-bevor es den aktuellen Zustand ersetzt;
-der bisherige Zustand wird unter einem neuen `client-before-restore-*` erhalten.
-Keine laufenden Gäste sichern und keinen Checkpoint als erfolgreich ansehen,
-bevor eine tatsächliche Wiederherstellung im Gast geprüft wurde. Die
-Hostregressionen prüfen tatsächliche kleine qcow2-Ketten, Datenrücknahme,
-Hashfehler und Prozesssperre. Der reale Windows-Wiederherstellungstest wird
-zusätzlich mit einem nachträglich angelegten Gastmarker geprüft.
+Sign in as the local LabAdmin on the client, then run the dialog tests:
 
-Rohbelege unter `work/` mit exakten Befehlen, Eingabe-SHA-256, Werkzeugversionen,
-Hostzeit und Exitstatus erfassen. Bereinigte Ergebnisberichte dürfen unter
-`reports/` versioniert werden. Fehlgeschlagene und übersprungene Prüfungen
-ausweisen. Vor erzwungener Anwendungskontrolle einen konsistenten Snapshot und
-einen getesteten Wiederherstellungsweg bereitstellen.
+```bash
+.venv/bin/python lab/interactive_tests.py "$GUEST_RUN" "$PROBE_DLL"
+```
 
-Technische Referenzen:
-[pywinrm-Nachrichtenverschlüsselung](https://github.com/diyan/pywinrm#encryption),
-[Build-Tools-Komponenten](https://learn.microsoft.com/en-us/visualstudio/install/workload-component-id-vs-build-tools?view=vs-2026).
+Set up the isolated domain after taking a server checkpoint:
+
+```bash
+.venv/bin/python lab/remote.py server scripts/Initialize-LabDomainRole.ps1
+.venv/bin/python lab/promote_server.py
+# Wait for the server restart.
+.venv/bin/python lab/remote.py server scripts/Initialize-LabGpo.ps1
+.venv/bin/python lab/remote.py client scripts/Initialize-LabClientNetwork.ps1
+.venv/bin/python lab/join_client.py
+# Wait for the client restart.
+.venv/bin/python lab/domain_tests.py "$PROBE_DLL"
+MRNG_RUN_NATIVE=1 .venv/bin/python -m unittest discover -s tests -p test_native_transport.py -v
+```
+
+The domain is `mrng.test`. Policy changes are limited to its own test OU.
+WinRM uses encrypted NTLM messages. Credentials, ISOs, VM state and raw evidence
+stay in ignored `work/` directories. The test account and S4U task are removed
+after each standard-user run.

@@ -89,7 +89,7 @@ def prepare(name):
     special = node(answer, 'settings', **{'pass':'specialize'})
     shell = component(special, 'Microsoft-Windows-Shell-Setup')
     node(shell, 'ComputerName', 'MRNG-DC' if name == 'server' else 'MRNG-CLIENT')
-    node(shell, 'TimeZone', 'W. Europe Standard Time')
+    node(shell, 'TimeZone', 'UTC')
     oobe = node(answer, 'settings', **{'pass':'oobeSystem'})
     intl = component(oobe, 'Microsoft-Windows-International-Core')
     for key, value in [('InputLocale', '0409:00000409'), ('SystemLocale', 'en-US'),

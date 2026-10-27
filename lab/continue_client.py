@@ -95,6 +95,7 @@ if ($LASTEXITCODE) {{ throw 'The pinned source-test process failed.' }}
         paths = re.findall(r'Run artifacts: (C:\\mrng-lab\\runs\\[0-9a-f]{12}-[0-9a-f]{32})', result.std_out.decode('utf-8'))
         if len(paths) != 1:
             raise ValueError('Cannot identify the guest test artifact directory')
+        record['guest_run'] = paths[0]
         for name in ('build.log', 'test.log', 'tests.trx', 'result.json'):
             fetched = run('fetch-' + name, f"if (Test-Path -LiteralPath '{paths[0]}\\{name}') {{ [Convert]::ToBase64String([IO.File]::ReadAllBytes('{paths[0]}\\{name}')) }}")
             if fetched.std_out.strip():
@@ -103,6 +104,7 @@ if ($LASTEXITCODE) {{ throw 'The pinned source-test process failed.' }}
             record['phase'] = 'source-tests'
             raise RuntimeError('Guest phase failed: source-tests; diagnostic artifacts retained')
         record['status'] = 'passed-source-tests'
+        print('Source tests passed; guest artifacts: ' + paths[0])
     except Exception as error:
         record['status'] = 'failed'
         record['error_type'] = type(error).__name__

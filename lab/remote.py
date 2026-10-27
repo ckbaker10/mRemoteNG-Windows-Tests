@@ -3,6 +3,7 @@ import argparse
 import base64
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import winrm
@@ -25,13 +26,16 @@ def run_ps_with_input(session, script, payload):
               "$e=[Console]::In.ReadToEnd()|ConvertFrom-Json;"
               "[Console]::SetIn([IO.StringReader]::new([Text.Encoding]::UTF8.GetString("
               "[Convert]::FromBase64String($e.input))));&([ScriptBlock]::Create($e.script));"
-              "if(-not $?){exit 1}}catch{Write-Error $_ -ErrorAction Continue;exit 1}")
+              "if(-not $?){exit 1}}catch{Write-Error -ErrorRecord $_ -ErrorAction Continue;exit 1}")
     encoded = base64.b64encode(loader.encode('utf-16-le')).decode('ascii')
     envelope = json.dumps({'script': script, 'input': base64.b64encode(payload).decode('ascii')}).encode('ascii')
     if len(envelope) > 65536:
         raise ValueError('Script and input exceed the bounded lab message size')
     protocol = session.protocol
-    shell = protocol.open_shell(noprofile=True, codepage=65001)
+    # WINRS_NOPROFILE controls the Windows registry/profile hive, not profile.ps1.
+    # COM and HKCU need that hive retained for the shell's lifetime. The process
+    # still receives PowerShell's separate -NoProfile switch below.
+    shell = protocol.open_shell(noprofile=False, codepage=65001)
     command = None
     try:
         command = protocol.run_command(shell, 'powershell.exe',
@@ -47,17 +51,32 @@ def run_ps_with_input(session, script, payload):
             protocol.close_shell(shell)
 
 
+def bind_parameters(script, parameters, payload=b''):
+    """Keep typed script parameters and optional input in the encrypted data stream."""
+    if not isinstance(parameters, dict) or any(not re.fullmatch('[A-Za-z][A-Za-z0-9]*', key) for key in parameters):
+        raise ValueError('Use a JSON object with PowerShell parameter names')
+    wrapper = ("$call=[Console]::In.ReadToEnd()|ConvertFrom-Json;$parameters=@{};"
+               "foreach($p in $call.parameters.PSObject.Properties){$parameters[$p.Name]=$p.Value};"
+               "[Console]::SetIn([IO.StringReader]::new([Text.Encoding]::UTF8.GetString("
+               "[Convert]::FromBase64String($call.input))));& {\n" + script + "\n} @parameters")
+    data = json.dumps({'parameters': parameters, 'input': base64.b64encode(payload).decode('ascii')}).encode('ascii')
+    return wrapper, data
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('machine', choices=['client', 'server'])
     parser.add_argument('script', type=Path)
     parser.add_argument('--input-file', type=Path)
+    parser.add_argument('--parameters-file', type=Path)
     args = parser.parse_args()
     try:
         script = args.script.read_text(encoding='utf-8-sig')
         session = create_session(args.machine)
-        result = (run_ps_with_input(session, script, args.input_file.read_bytes()) if args.input_file
-                  else session.run_ps(script))
+        payload = args.input_file.read_bytes() if args.input_file else b''
+        if args.parameters_file:
+            script, payload = bind_parameters(script, json.loads(args.parameters_file.read_text()), payload)
+        result = run_ps_with_input(session, script, payload)
     except Exception as error:
         # Credentials and transport payloads must never enter diagnostic logs.
         print(f'Guest request failed: {type(error).__name__}', file=sys.stderr)

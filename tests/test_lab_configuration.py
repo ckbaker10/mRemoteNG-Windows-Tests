@@ -58,6 +58,13 @@ class LabConfigurationTests(unittest.TestCase):
         for name in ('SystemLocale', 'UILanguage', 'UserLocale'):
             self.assertEqual(component.find('u:' + name, NS).text, 'en-US')
 
+    def test_windows_timezone_matches_the_utc_virtual_hardware_clock(self):
+        for machine in ('client', 'server'):
+            target = lab.prepare(machine)
+            answer = ET.parse(target / 'seed' / 'autounattend.xml')
+            zones = answer.findall('.//u:TimeZone', NS)
+            self.assertEqual([zone.text for zone in zones], ['UTC'])
+
     def test_management_is_loopback_and_guest_macs_are_unique(self):
         addresses = set()
         for machine in ('server', 'client'):
