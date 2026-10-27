@@ -109,6 +109,26 @@ TRX und Ergebnis-JSON liegen in einem neuen `work/client-*`-Verzeichnis.
 
 ## Nachweise
 
+Vor Anwendungskontrolltests den Gast sauber herunterfahren und den zugehörigen
+TPM-Emulator beenden. `lab/checkpoint.py` verweigert laufende QEMU-/TPM-Prozesse:
+
+```bash
+.venv/bin/python lab/manage.py powerdown client
+# Erst nach tatsächlich beendetem Gast:
+swtpm_ioctl --unix "$MRNG_LAB_ROOT/client/tpm.sock" -s
+.venv/bin/python lab/checkpoint.py save client before-app-control
+```
+
+Wenn Systemd den TPM-Prozess bereits zusammen mit QEMU beendet hat, entfällt
+der ioctl-Aufruf. Ein Checkpoint erfasst Festplatte, UEFI-Variablen, TPM-Zustand,
+Laboridentität und Installationsmarker mit SHA-256. `restore client <label>`
+verifiziert und kopiert vollständig, bevor es den aktuellen Zustand ersetzt;
+der bisherige Zustand wird unter einem neuen `client-before-restore-*` erhalten.
+Keine laufenden Gäste sichern und keinen Checkpoint als erfolgreich ansehen,
+bevor eine tatsächliche Wiederherstellung im Gast geprüft wurde. Die
+Hostregressionen prüfen Ablauf, Hashfehler und Prozesssperre mit synthetischen
+Dateien; der reale Windows-Wiederherstellungstest ist noch offen.
+
 Rohbelege unter `work/` mit exakten Befehlen, Eingabe-SHA-256, Werkzeugversionen,
 Hostzeit und Exitstatus erfassen. Bereinigte Ergebnisberichte dürfen unter
 `reports/` versioniert werden. Fehlgeschlagene und übersprungene Prüfungen
