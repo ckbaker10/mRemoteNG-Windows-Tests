@@ -46,12 +46,21 @@ class DesktopNoLockTests(unittest.TestCase):
         lab.prepare('client')
         copied = [Path(call.args[0]).name for call in self.copy.call_args_list]
         self.assertIn('Set-LabNoLock.ps1', copied)
+        self.assertIn('Set-LabUpdatePolicy.ps1', copied)
 
     def test_bootstrap_applies_no_lock_settings_without_blocking_readiness(self):
         bootstrap = (REPO / 'lab' / 'bootstrap.ps1').read_text(encoding='utf-8-sig')
         call = bootstrap.index('Set-LabNoLock.ps1')
         self.assertLess(call, bootstrap.index('ready.txt'))
         self.assertIn('catch', bootstrap[call:bootstrap.index('ready.txt')])
+
+    def test_bootstrap_pins_the_windows_build_without_blocking_readiness(self):
+        bootstrap = (REPO / 'lab' / 'bootstrap.ps1').read_text(encoding='utf-8-sig')
+        call = bootstrap.index('Set-LabUpdatePolicy.ps1')
+        self.assertLess(call, bootstrap.index('ready.txt'))
+        script = (REPO / 'scripts' / 'Set-LabUpdatePolicy.ps1').read_text(encoding='utf-8-sig')
+        for value in ('NoAutoUpdate', 'NoAutoRebootWithLoggedOnUsers', 'SetDisableUXWUAccess'):
+            self.assertIn(value, script)
 
     def test_no_lock_script_never_stores_a_plaintext_password(self):
         script = (REPO / 'scripts' / 'Set-LabNoLock.ps1').read_text(encoding='utf-8-sig')

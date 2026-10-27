@@ -133,7 +133,8 @@ def prepare(name):
     ET.ElementTree(answer).write(seed/'autounattend.xml', encoding='utf-8', xml_declaration=True)
     os.chmod(seed/'autounattend.xml', 0o600)
     shutil.copyfile(Path(__file__).with_name('bootstrap.ps1'), seed/'bootstrap.ps1')
-    shutil.copyfile(Path(__file__).resolve().parents[1]/'scripts'/'Set-LabNoLock.ps1', seed/'Set-LabNoLock.ps1')
+    for script in ('Set-LabNoLock.ps1', 'Set-LabUpdatePolicy.ps1'):
+        shutil.copyfile(Path(__file__).resolve().parents[1]/'scripts'/script, seed/script)
     subprocess.run(['xorriso','-as','mkisofs','-quiet','-J','-r','-V','MRNGLAB','-o',str(target/'seed.iso'),str(seed)],check=True)
     os.chmod(target/'seed.iso',0o600)
     if not (target/'disk.qcow2').exists():

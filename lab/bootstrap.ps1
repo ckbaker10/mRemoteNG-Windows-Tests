@@ -14,5 +14,7 @@ Remove-Item C:\Windows\Panther\unattend.xml,C:\Windows\Panther\Unattend\unattend
     -ErrorAction SilentlyContinue
 # Keep the lab desktop signed in and unlocked so evidence screenshots show the real desktop.
 try { & (Join-Path $PSScriptRoot 'Set-LabNoLock.ps1') } catch { Write-Warning "No-lock desktop settings failed: $_" }
+# Keep the guest on its recorded Windows build during acceptance runs.
+try { & (Join-Path $PSScriptRoot 'Set-LabUpdatePolicy.ps1') } catch { Write-Warning "Update policy failed: $_" }
 Set-Content C:\mrng-lab\ready.txt -Value 'WinRM ready'
 Stop-Transcript
