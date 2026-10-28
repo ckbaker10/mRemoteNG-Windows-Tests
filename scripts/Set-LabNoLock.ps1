@@ -13,10 +13,8 @@ foreach ($setting in 'monitor-timeout', 'standby-timeout', 'hibernate-timeout') 
     foreach ($source in 'ac', 'dc') { & powercfg.exe /change "$setting-$source" 0 | Out-Null }
 }
 & powercfg.exe /hibernate off | Out-Null
-# "Require sign-in on wake": CONSOLELOCK 0 = never.
-& powercfg.exe /setacvalueindex SCHEME_CURRENT SUB_NONE CONSOLELOCK 0 | Out-Null
-& powercfg.exe /setdcvalueindex SCHEME_CURRENT SUB_NONE CONSOLELOCK 0 | Out-Null
-& powercfg.exe /setactive SCHEME_CURRENT | Out-Null
+# "Require sign-in on wake" = never. The policy value takes precedence over the
+# power scheme's hidden CONSOLELOCK setting, so only the policy is written.
 $wake = 'HKLM:\SOFTWARE\Policies\Microsoft\Power\PowerSettings\0e796bdb-100d-47d6-a2d5-f7d2daa51f51'
 New-Item $wake -Force | Out-Null
 Set-ItemProperty $wake ACSettingIndex -Value 0 -Type DWord
