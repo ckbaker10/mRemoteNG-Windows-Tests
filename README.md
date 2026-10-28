@@ -98,6 +98,7 @@ read from the owner-only lab credentials and passed through the encrypted
 WinRM input; it is stored as the LSA DefaultPassword secret, never in plain text.
 
 ```bash
+mkdir -p work/full-suite
 printf '{"EnableAutoLogon":true}\n' > work/autologon.json
 .venv/bin/python lab/remote.py client scripts/Set-LabNoLock.ps1 --parameters-file work/autologon.json \
   --input-file <(.venv/bin/python -c 'import json,os,sys; p=os.environ["MRNG_LAB_ROOT"]+"/client/credentials.json"; sys.stdout.write(json.load(open(p))["password"])')
@@ -109,7 +110,6 @@ Serve the archives as described above (`work/transfer` on port 55987). List
 the branches and pinned commits to test, one `<branch> <commit>` per line:
 
 ```bash
-mkdir -p work/full-suite
 for b in fix/atomic-connection-file-writes fix/password-dialog-validation fix/credential-export-restrictions \
          feat/security-policy-core feat/nonpersistent-unlock-policy feat/secure-export-policy \
          feat/master-password-policy fix/encrypted-secret-storage feat/security-gpo-templates \
